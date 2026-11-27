@@ -51,7 +51,7 @@ Usage
   py add_topas_limits.py my_file.inp -o new_file.inp
 """
 
-__version__ = "1.0.4"
+__version__ = "1.0.5"
 
 import argparse
 import re
@@ -129,6 +129,13 @@ def code_mask(text):
             mask[k] = False
         i = j
     return mask
+
+
+def line_start_pos(text, ln):
+    pos = 0
+    for _ in range(ln - 1):
+        pos = text.index("\n", pos) + 1
+    return pos
 
 
 def line_no(text, pos):
@@ -802,8 +809,21 @@ def process(text):
     flags = collect_flags(code)
     skipped, warnings, notes, changed, edits = [], [], [], [], []
 
-    params = find_cs(text, code, flags, skipped)
-    params += find_cell(text, code, flags, find_phases(text, code), skipped, notes)
+    phases = find_phases(text, code)
+    str_phases = [ph for ph in phases if ph["kw"] == "str"]
+    n_hkl = len(phases) - len(str_phases)
+    if n_hkl:
+        notes.append(f"{n_hkl} hkl_Is phase(s) left unchanged (limits are only added in str phases)")
+    spans = [(ph["start"], ph["end"]) for ph in str_phases]
+
+    def in_str(pos):
+        return any(a <= pos < b for a, b in spans)
+
+    params = [p for p in find_cs(text, code, flags, skipped) if in_str(p["start"])]
+    skipped[:] = [x for x in skipped
+                  if not x[1].startswith(("CS", "Strain", "LVol", "e0_"))
+                  or in_str(line_start_pos(text, x[0]))]
+    params += find_cell(text, code, flags, str_phases, skipped, notes)
 
     states = preprocessor_contexts(code)
     for p in params:

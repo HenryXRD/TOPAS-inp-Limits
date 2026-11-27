@@ -36,7 +36,9 @@ Always open the output in TOPAS and do a test refinement before replacing your w
 |---|---|---|---|
 | Crystallite size | `CS(`, `CS_L(`, `CS_G(`, and the CS arguments of `LVol_FWHM_CS_G_L(` | 32 | 1000 |
 | Strain | `Strain_L(`, `Strain_G(`, and the strain arguments of `e0_from_Strain(` | 0 | 0.5 |
-| Unit cell | `a b c al be ga` in every `str` / `STR(...)` / `hkl_Is`, and the `Cubic(`, `Tetragonal(`, `Hexagonal(`, `Trigonal(`, `Rhombohedral(` macros | start − 1 % | start + 1 % |
+| Unit cell | `a b c al be ga` in every `str` / `STR(...)` phase, and the `Cubic(`, `Tetragonal(`, `Hexagonal(`, `Trigonal(`, `Rhombohedral(` macros | start − 1 % | start + 1 % |
+
+Limits are only added inside `str` / `STR(...)` phases. `hkl_Is` phases (e.g. PONKCS phases, whose small crystallite sizes are deliberate) and anything outside a phase (e.g. an `xdd` block) are left unchanged.
 
 The defaults can be changed in the *Settings* block at the top of the script.
 
@@ -91,13 +93,13 @@ str
 
 ## Symmetry check
 
-For phases with a recognised space group (not set up with the `Cubic(`/`Tetragonal(`/... macros, which enforce symmetry themselves), the report lists `CHECK` lines for:
+For `str` phases with a recognised space group (not set up with the `Cubic(`/`Tetragonal(`/... macros, which enforce symmetry themselves), the report lists `CHECK` lines for:
 
-- cell parameters that symmetry allows to refine but are fixed (no parameter name or `@`). Not reported for `hkl_Is` phases, which are assumed to be PONKCS phases with fixed cells;
+- cell parameters that symmetry allows to refine but are fixed (no parameter name or `@`);
 - angles that are refined but fixed by symmetry (e.g. `be @ 90` in a cubic phase);
 - parameters that must be equal (cubic a = b = c, tetragonal/hexagonal a = b, rhombohedral a = b = c and al = be = ga) but are not tied by a shared name or an equation such as `b = Get(a);`;
 - angles that are not 90°/120° although symmetry fixes them (suggests a wrong space group);
-- phases the script may have missed: a block with more than one `phase_name`, or cell parameters before the first recognised phase. This usually means a phase starts with a macro the script does not recognise (only `str`, `STR(` and `hkl_Is` are recognised), so the previous phase's space group was applied to it.
+- phases the script may have missed: a block with more than one `phase_name`, or cell parameters before the first recognised phase. This usually means a phase starts with a macro the script does not recognise (only `str`, `STR(` and `hkl_Is` are recognised as phase starts), so the previous phase's space group was applied to it.
 
 Parameters switched by a `#define` flag instead of `@`/`!` are not checked for fixed/refined status, because that depends on the launch mode.
 
