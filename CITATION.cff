@@ -1,0 +1,23 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using the metadata from this file."
+type: software
+title: "TOPAS-inp-Limits"
+abstract: >-
+  Python script that inserts missing min/max limits for unit cell,
+  crystallite size and strain parameters in TOPAS .inp files, and checks
+  that each phase's unit cell is refined and constrained as its space
+  group requires.
+authors:
+  - family-names: Spratt
+    given-names: Henry
+    orcid: "https://orcid.org/0000-0003-2271-4517"
+version: 1.0.9
+date-released: 2026-11-27
+license: MIT
+repository-code: "https://github.com/HenryXRD/TOPAS-inp-Limits"
+keywords:
+  - TOPAS
+  - Rietveld refinement
+  - powder X-ray diffraction
+  - quantitative phase analysis
+  - crystallography
