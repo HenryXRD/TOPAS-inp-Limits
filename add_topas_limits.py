@@ -51,7 +51,7 @@ Usage
   py add_topas_limits.py my_file.inp -o new_file.inp
 """
 
-__version__ = "1.0.3"
+__version__ = "1.0.4"
 
 import argparse
 import re
@@ -148,9 +148,86 @@ def plain(v):
     return v.rstrip(";").strip()
 
 
+EQ_TOKEN = re.compile(r"\s*(?:((?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)|([-+*/^()]))")
+
+
+def eval_simple(expr):
+    """Evaluate a purely numeric TOPAS expression, e.g. '7.0567 - 7.0567 0.01'
+    (a space between operands is multiplication, as in TOPAS). None if it
+    contains anything else (parameter names, functions)."""
+    toks, i = [], 0
+    expr = expr.strip()
+    while i < len(expr):
+        m = EQ_TOKEN.match(expr, i)
+        if not m or m.end() == i:
+            if expr[i:].strip() == "":
+                break
+            return None
+        toks.append(("n", float(m.group(1))) if m.group(1) else ("o", m.group(2)))
+        i = m.end()
+    pos = [0]
+
+    def peek():
+        return toks[pos[0]] if pos[0] < len(toks) else (None, None)
+
+    def take():
+        pos[0] += 1
+        return toks[pos[0] - 1]
+
+    def expr_():
+        v = term()
+        while peek() in (("o", "+"), ("o", "-")):
+            op = take()[1]
+            r = term()
+            v = v + r if op == "+" else v - r
+        return v
+
+    def term():
+        v = power()
+        while True:
+            t = peek()
+            if t in (("o", "*"), ("o", "/")):
+                op = take()[1]
+                r = power()
+                v = v * r if op == "*" else v / r
+            elif t[0] == "n" or t == ("o", "("):
+                v = v * power()                      # implicit multiplication
+            else:
+                return v
+
+    def power():
+        v = unary()
+        if peek() == ("o", "^"):
+            take()
+            v = v ** power()
+        return v
+
+    def unary():
+        t = peek()
+        if t in (("o", "-"), ("o", "+")):
+            take()
+            v = unary()
+            return -v if t[1] == "-" else v
+        if t[0] == "n":
+            return take()[1]
+        if t == ("o", "("):
+            take()
+            v = expr_()
+            if take() != ("o", ")"):
+                raise ValueError
+            return v
+        raise ValueError
+
+    try:
+        v = expr_()
+        return v if pos[0] == len(toks) else None
+    except (ValueError, ZeroDivisionError, IndexError, OverflowError):
+        return None
+
+
 def plain_num(v):
     v = plain(v)
-    return float(v) if NUM_RE.fullmatch(v) else None
+    return float(v) if NUM_RE.fullmatch(v) else eval_simple(v)
 
 
 def norm(v):
@@ -158,6 +235,9 @@ def norm(v):
     m = NUM_RE.match(v)
     if m and (m.end() == len(v) or v[m.end()] in "`_"):
         return float(m.group(0))          # ignore error suffix
+    e = eval_simple(v)
+    if e is not None:
+        return round(e, 9)
     return re.sub(r"\s+", "", v)
 
 
@@ -768,11 +848,6 @@ def process(text):
                                   (hi_v is not None and v > hi_v)):
                 warnings.append(f"{label}: start value {p['value']} on line {p['ln']} "
                                 f"is outside min {plain(lo_c)} / max {plain(hi_c)}")
-            for key in ("min", "max"):
-                eq = p[key]
-                if eq and eq.strip().startswith("=") and re.search(r"[\d.]\s+[\d.]", eq):
-                    warnings.append(f"{label}: line {p['ln']} {key} {eq.strip()} has two numbers "
-                                    f"with no operator between them - possible typo (missing *?)")
         lo = pick_limit(group, "min", lo_def, warnings, label)
         hi = pick_limit(group, "max", hi_def, warnings, label)
         for p in group:

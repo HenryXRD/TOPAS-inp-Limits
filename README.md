@@ -108,7 +108,7 @@ The script prints:
 - **Phases and notes**: each phase's space group, crystal system and refinable angles, plus names found in mutually exclusive `#ifdef` branches;
 - **Changed**: every inserted limit with its line number;
 - **Skipped and symmetry checks**: skipped values and `CHECK` lines;
-- **Warnings**: instances of a shared name with different existing limits (nothing inserted for that limit; fix by hand), different start values, a start value outside its limits, or a limit equation with two numbers and no operator between them (e.g. `min = 5.086 - 5.086 0.01;`).
+- **Warnings**: instances of a shared name with different existing limits (nothing inserted for that limit; fix by hand), different start values, or a start value outside its limits. Limits written as purely numeric equations (e.g. `min = 5.086 - 5.086 0.01;`, where TOPAS reads the space as multiplication) are evaluated for this check and for comparing shared limits; equations that use parameter names are not.
 
 ## Limitations
 
