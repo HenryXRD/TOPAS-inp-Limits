@@ -51,7 +51,7 @@ Usage
   py add_topas_limits.py my_file.inp -o new_file.inp
 """
 
-__version__ = "1.0.1"
+__version__ = "1.0.2"
 
 import argparse
 import re
@@ -73,7 +73,8 @@ CELL_MIN_DECIMALS = 4       # decimals used when writing cell limits
 
 NUM = r"[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?"
 NUM_RE = re.compile(NUM)
-VALUE_RE = re.compile(NUM + r"(?:`[^\s,();]*)?")
+# number, optionally followed by an error / limit suffix: `_0.01, `, _0.01, `_LIMIT_MIN_32
+VALUE_RE = re.compile(NUM + r"(?:`?_[^\s,();]*|`[^\s,();]*)?")
 IDENT_RE = re.compile(r"[!@]?[A-Za-z_]\w*|@")
 # macros with size/strain parameters at fixed argument positions:
 #   (name arg index, value arg index, limit type)
@@ -94,7 +95,7 @@ CELL_MACROS = {
     "Rhombohedral": ("a", "al"),
 }
 CELL_MACRO_RE = re.compile(r"(?<![\w])(" + "|".join(CELL_MACROS) + r")\(")
-PHASE_RE = re.compile(r"(?<![\w])(str|hkl_Is|xo_Is|d_Is|xdd)(?![\w])")
+PHASE_RE = re.compile(r"(?<![\w])(str|hkl_Is|xo_Is|d_Is|xdd)(?![\w])|(?<![\w])(STR)\(")
 ATTR_KW = {"min", "max", "del", "val_on_continue", "update", "stop_when"}
 NOT_A_NAME = ATTR_KW | {"a", "b", "c", "al", "be", "ga"}
 
@@ -154,8 +155,10 @@ def plain_num(v):
 
 def norm(v):
     v = plain(v)
-    f = num(v.split("`")[0]) if NUM_RE.fullmatch(v.split("`")[0]) else None
-    return f if f is not None else re.sub(r"\s+", "", v)
+    m = NUM_RE.match(v)
+    if m and (m.end() == len(v) or v[m.end()] in "`_"):
+        return float(m.group(0))          # ignore error suffix
+    return re.sub(r"\s+", "", v)
 
 
 def skip_ws(code, i, end):
@@ -439,14 +442,27 @@ def find_cs(text, code, flags, skipped):
 
 
 def find_phases(text, code):
-    marks = [(m.start(), m.group(1)) for m in PHASE_RE.finditer(code)]
+    marks = []
+    for m in PHASE_RE.finditer(code):
+        if m.group(2):                                   # STR(sg ...) macro
+            if code[max(0, m.start() - 30):m.start()].split()[-1:] == ["macro"]:
+                continue                                 # its definition, not a phase
+            marks.append((m.start(), "STR", m.end() - 1))
+        else:
+            marks.append((m.start(), m.group(1), None))
     phases = []
-    for k, (pos, kw) in enumerate(marks):
-        if kw not in ("str", "hkl_Is"):
+    for k, (pos, kw, open_pos) in enumerate(marks):
+        if kw not in ("str", "hkl_Is", "STR"):
             continue
         end = marks[k + 1][0] if k + 1 < len(marks) else len(code)
         sg = None
-        sm = re.compile(r"(?<![\w])space_group(?![\w])").search(code, pos, end)
+        if kw == "STR":
+            close = skip_parens(code, open_pos, end) - 1
+            args = split_args(code, open_pos, close) if code[close] == ")" else []
+            if args:
+                sg = text[args[0][0]:args[0][1]].strip().strip('"').strip() or None
+            kw = "str"
+        sm = None if sg else re.compile(r"(?<![\w])space_group(?![\w])").search(code, pos, end)
         if sm:
             i = skip_ws(text, sm.end(), end)
             if i < end and text[i] == '"':

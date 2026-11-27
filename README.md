@@ -36,7 +36,7 @@ Always open the output in TOPAS and do a test refinement before replacing your w
 |---|---|---|---|
 | Crystallite size | `CS(`, `CS_L(`, `CS_G(`, and the CS arguments of `LVol_FWHM_CS_G_L(` | 32 | 1000 |
 | Strain | `Strain_L(`, `Strain_G(`, and the strain arguments of `e0_from_Strain(` | 0 | 0.5 |
-| Unit cell | `a b c al be ga` in every `str` / `hkl_Is`, and the `Cubic(`, `Tetragonal(`, `Hexagonal(`, `Trigonal(`, `Rhombohedral(` macros | start − 1 % | start + 1 % |
+| Unit cell | `a b c al be ga` in every `str` / `STR(...)` / `hkl_Is`, and the `Cubic(`, `Tetragonal(`, `Hexagonal(`, `Trigonal(`, `Rhombohedral(` macros | start − 1 % | start + 1 % |
 
 The defaults can be changed in the *Settings* block at the top of the script.
 
@@ -57,6 +57,8 @@ The defaults can be changed in the *Settings* block at the top of the script.
   Space groups are read in compact (`P21/c`), TOPAS (`P2_1/c`), spaced full (`"P 1 21/c 1"`) or number form, including `:R`/`:H` settings. Phases without a `space_group` fall back to the angle values (an angle that is not 90° or 120° is treated as refinable) and this is reported.
 - Equation values (`= ...;`) and non-numeric values (macro arguments, `#define` names) are skipped.
 - Comments (`'` and `/* */`) and `"strings"` are ignored, so text such as a phase named "CS" is never touched. Macros are only recognised when `(` follows the name directly, e.g. `CS(`.
+- Phases started with the `STR(sg)` macro are recognised, with the space group taken from its first argument.
+- Values with an error suffix (`` 5.4310`_0.0002 ``, `5.4310_0.0002`, `` 5.4310` ``) are read as one value; limits go after the suffix.
 - Element symbols after `occ` (e.g. `occ al 0.5`, `occ c 1`) are never mistaken for the cell parameters `al`, `c`, `b`, `be`, `ga`.
 - Identifiers created with `#define` or `macro` are treated as flags, not parameter names.
 - Line endings and text encoding are preserved.
