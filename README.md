@@ -57,6 +57,7 @@ The defaults can be changed in the *Settings* block at the top of the script.
   Space groups are read in compact (`P21/c`), TOPAS (`P2_1/c`), spaced full (`"P 1 21/c 1"`) or number form, including `:R`/`:H` settings. Phases without a `space_group` fall back to the angle values (an angle that is not 90° or 120° is treated as refinable) and this is reported.
 - Equation values (`= ...;`) and non-numeric values (macro arguments, `#define` names) are skipped.
 - Comments (`'` and `/* */`) and `"strings"` are ignored, so text such as a phase named "CS" is never touched. Macros are only recognised when `(` follows the name directly, e.g. `CS(`.
+- Element symbols after `occ` (e.g. `occ al 0.5`, `occ c 1`) are never mistaken for the cell parameters `al`, `c`, `b`, `be`, `ga`.
 - Identifiers created with `#define` or `macro` are treated as flags, not parameter names.
 - Line endings and text encoding are preserved.
 
@@ -104,7 +105,7 @@ The script prints:
 - **Phases and notes**: each phase's space group, crystal system and refinable angles, plus names found in mutually exclusive `#ifdef` branches;
 - **Changed**: every inserted limit with its line number;
 - **Skipped and symmetry checks**: skipped values and `CHECK` lines;
-- **Warnings**: instances of a shared name with different existing limits (nothing inserted for that limit; fix by hand), different start values, or a cell start value outside its limits.
+- **Warnings**: instances of a shared name with different existing limits (nothing inserted for that limit; fix by hand), different start values, a start value outside its limits, or a limit equation with two numbers and no operator between them (e.g. `min = 5.086 - 5.086 0.01;`).
 
 ## Limitations
 

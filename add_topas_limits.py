@@ -51,7 +51,7 @@ Usage
   py add_topas_limits.py my_file.inp -o new_file.inp
 """
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 
 import argparse
 import re
@@ -85,7 +85,7 @@ MULTI_MACROS = {
 }
 CS_RE = re.compile(r"(?<![\w])(LVol_FWHM_CS_G_L|e0_from_Strain|CS_L|CS_G|CS|Strain_L|Strain_G)\(")
 # "(" must follow the macro name directly
-CELL_KW_RE = re.compile(r"(?<![\w.`])(a|b|c|al|be|ga)(?![\w])")
+CELL_KW_RE = re.compile(r"(?<![\w.`])(a|b|c|al|be|ga)(?=\s)")
 CELL_MACROS = {
     "Cubic": ("a",),
     "Tetragonal": ("a", "c"),
@@ -139,8 +139,21 @@ def num(v):
     return float(m.group(0)) if m else None
 
 
-def norm(v):
+def plain(v):
+    """'=1000;' -> '1000'."""
     v = v.strip()
+    if v.startswith("="):
+        v = v[1:]
+    return v.rstrip(";").strip()
+
+
+def plain_num(v):
+    v = plain(v)
+    return float(v) if NUM_RE.fullmatch(v) else None
+
+
+def norm(v):
+    v = plain(v)
     f = num(v.split("`")[0]) if NUM_RE.fullmatch(v.split("`")[0]) else None
     return f if f is not None else re.sub(r"\s+", "", v)
 
@@ -440,7 +453,7 @@ def find_phases(text, code):
                 j = text.find('"', i + 1, end)
                 sg = text[i + 1:j if j != -1 else end]
             else:
-                tm = re.compile(r"\S+").match(text, i, end)
+                tm = re.compile(r"\S+").match(code, i, end)   # comments blanked
                 sg = tm.group(0) if tm else None
         phases.append(dict(kw=kw, start=pos, end=end, ln=line_no(text, pos), sg=sg))
     return phases
@@ -453,8 +466,8 @@ def find_cell(text, code, flags, phases, skipped, notes):
         # keyword form: a @ 5.43 ...
         for m in CELL_KW_RE.finditer(code, ph["start"], ph["end"]):
             before = code[max(ph["start"], m.start() - 40):m.start()].split()
-            if before and before[-1] in ("prm", "local", "existing_prm"):
-                continue
+            if before and before[-1] in ("prm", "local", "existing_prm", "occ"):
+                continue        # e.g. "occ al 0.5": element symbol, not the cell angle
             p = parse_value(code, m.end(), ph["end"], flags)
             if p is None:
                 continue
@@ -493,6 +506,12 @@ def find_cell(text, code, flags, phases, skipped, notes):
             if p["param"] in ("al", "be", "ga"):
                 angle_vals.setdefault(p["param"], num(p["value"].split("`")[0]))
         system, detail = crystal_system(ph["sg"]) if ph["sg"] else (None, None)
+        macros_used = {p["label"].split(":")[0] for p in found if p.get("from_macro")}
+        if system == "trigonal" and detail is None:
+            if macros_used & {"Trigonal", "Hexagonal"}:
+                detail = "H"
+            elif "Rhombohedral" in macros_used:
+                detail = "R"
         angles, warn = eligible_angles(system, detail, angle_vals)
         sg_txt = ph["sg"] if ph["sg"] else "none"
         notes.append(f"{ph['kw']} at line {ph['ln']}: space group {sg_txt} -> "
@@ -708,16 +727,20 @@ def process(text):
             lines = ", ".join(f"{p['ln']} ({p['value']})" for p in group)
             warnings.append(f"{label}: start values differ on lines {lines} "
                             f"- not changed; please make them the same")
-        if first["kind"] == "cell":
-            for p in group:
-                v = num(p["value"].split("`")[0])
-                lo_c = next((q["min"] for q in group if q["min"] is not None), lo_def)
-                hi_c = next((q["max"] for q in group if q["max"] is not None), hi_def)
-                lo_v, hi_v = num(lo_c.lstrip("=")), num(hi_c.lstrip("="))
-                if v is not None and ((lo_v is not None and v < lo_v) or
-                                      (hi_v is not None and v > hi_v)):
-                    warnings.append(f"{label}: start value {p['value']} on line {p['ln']} "
-                                    f"is outside min {lo_c} / max {hi_c}")
+        lo_c = next((q["min"] for q in group if q["min"] is not None), lo_def)
+        hi_c = next((q["max"] for q in group if q["max"] is not None), hi_def)
+        lo_v, hi_v = plain_num(lo_c), plain_num(hi_c)
+        for p in group:
+            v = num(p["value"].split("`")[0])
+            if v is not None and ((lo_v is not None and v < lo_v) or
+                                  (hi_v is not None and v > hi_v)):
+                warnings.append(f"{label}: start value {p['value']} on line {p['ln']} "
+                                f"is outside min {plain(lo_c)} / max {plain(hi_c)}")
+            for key in ("min", "max"):
+                eq = p[key]
+                if eq and eq.strip().startswith("=") and re.search(r"[\d.]\s+[\d.]", eq):
+                    warnings.append(f"{label}: line {p['ln']} {key} {eq.strip()} has two numbers "
+                                    f"with no operator between them - possible typo (missing *?)")
         lo = pick_limit(group, "min", lo_def, warnings, label)
         hi = pick_limit(group, "max", hi_def, warnings, label)
         for p in group:
@@ -734,6 +757,13 @@ def process(text):
                     pos = p["min_end"]
                 edits.append((pos, ins))
                 changed.append((p["ln"], p["label"], p["value"], ins.strip()))
+
+    seen, uniq = set(), []
+    for item in skipped:
+        if item not in seen:
+            seen.add(item)
+            uniq.append(item)
+    skipped[:] = uniq
 
     out = text
     for pos, ins in sorted(edits, reverse=True):
