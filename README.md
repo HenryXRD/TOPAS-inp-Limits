@@ -25,6 +25,9 @@ py add_topas_limits.py my_file.inp
 - Choose a different output name with `-o`:
   `py add_topas_limits.py my_file.inp -o my_file_new.inp`
 - Save the report: `py add_topas_limits.py my_file.inp > report.txt`
+- If your file reuses parameter names in alternative phases that are never refined together (e.g. the same `cs_rutile` in an internal-standard phase and a sample phase), add `--separate-phases`:
+  `py add_topas_limits.py my_file.inp --separate-phases`
+  Each `str` phase then gets its own limits and start-value checks; names shared within one phase are still kept identical.
 
 Always open the output in TOPAS and do a test refinement before replacing your working file.
 
@@ -114,7 +117,7 @@ The script prints:
 
 ## Limitations
 
-- Instances that are mutually exclusive by some means other than `#ifdef` (e.g. switched by a macro) cannot be detected, so they are treated as active together.
+- Instances that are mutually exclusive by some means other than `#ifdef` (e.g. switched by a macro, or alternative phases loaded in different runs) cannot be detected, so they are treated as active together. Use `--separate-phases` if they are in different `str` phases.
 - Only the macros listed above are recognised. Size or strain parameters inside your own macros are only handled where the standard macro calls appear in the `.inp` itself.
 
 ## AI-use disclosure

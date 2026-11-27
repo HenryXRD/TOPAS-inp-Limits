@@ -51,7 +51,7 @@ Usage
   py add_topas_limits.py my_file.inp -o new_file.inp
 """
 
-__version__ = "1.0.7"
+__version__ = "1.0.8"
 
 import argparse
 import re
@@ -805,7 +805,7 @@ def pick_limit(group, key, default, warnings, label):
     return None
 
 
-def process(text):
+def process(text, separate_phases=False):
     mask = code_mask(text)
     code = "".join(ch if m else " " for ch, m in zip(text, mask))
     flags = collect_flags(code)
@@ -838,9 +838,21 @@ def process(text):
     for p in params:
         p["ctx"] = context_at(states, p["insert_pos"])
 
+    def phase_of(pos):
+        for k, (a, b) in enumerate(spans):
+            if a <= pos < b:
+                return k
+        return -1
+
     groups = defaultdict(list)
     for idx, p in enumerate(params):
-        groups[p["name"] if p["name"] else f"__unnamed_{idx}"].append(p)
+        if not p["name"]:
+            key = f"__unnamed_{idx}"
+        elif separate_phases:
+            key = (p["name"], phase_of(p["insert_pos"]))
+        else:
+            key = p["name"]
+        groups[key].append(p)
 
     subgroups = []
     for key, group in groups.items():
@@ -922,6 +934,9 @@ def main():
     ap = argparse.ArgumentParser(description="Insert missing min/max limits in a TOPAS .inp")
     ap.add_argument("inp", help="input .inp file")
     ap.add_argument("-o", "--output", help="output file (default: <name>_limits.inp)")
+    ap.add_argument("--separate-phases", action="store_true",
+                    help="treat a parameter name used in different str phases as separate "
+                         "parameters (for alternative phases that are never refined together)")
     args = ap.parse_args()
 
     src = Path(args.inp)
@@ -932,12 +947,14 @@ def main():
         sys.exit("Output would overwrite the input; choose a different -o path.")
 
     text, enc = read_text(src)
-    out, changed, skipped, warnings, notes = process(text)
+    out, changed, skipped, warnings, notes = process(text, args.separate_phases)
     with open(dst, "w", encoding=enc, newline="") as f:
         f.write(out)
 
     print(f"add_topas_limits.py v{__version__}")
     print(f"Input : {src}\nOutput: {dst}")
+    if args.separate_phases:
+        print("Mode  : --separate-phases (shared names in different str phases treated separately)")
     print(f"\nPhases and notes: {len(notes)}")
     for n in notes:
         print(f"  {n}")
