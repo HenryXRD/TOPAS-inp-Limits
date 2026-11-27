@@ -96,7 +96,8 @@ For phases with a recognised space group (not set up with the `Cubic(`/`Tetragon
 - cell parameters that symmetry allows to refine but are fixed (no parameter name or `@`). Not reported for `hkl_Is` phases, which are assumed to be PONKCS phases with fixed cells;
 - angles that are refined but fixed by symmetry (e.g. `be @ 90` in a cubic phase);
 - parameters that must be equal (cubic a = b = c, tetragonal/hexagonal a = b, rhombohedral a = b = c and al = be = ga) but are not tied by a shared name or an equation such as `b = Get(a);`;
-- angles that are not 90°/120° although symmetry fixes them (suggests a wrong space group).
+- angles that are not 90°/120° although symmetry fixes them (suggests a wrong space group);
+- phases the script may have missed: a block with more than one `phase_name`, or cell parameters before the first recognised phase. This usually means a phase starts with a macro the script does not recognise (only `str`, `STR(` and `hkl_Is` are recognised), so the previous phase's space group was applied to it.
 
 Parameters switched by a `#define` flag instead of `@`/`!` are not checked for fixed/refined status, because that depends on the launch mode.
 

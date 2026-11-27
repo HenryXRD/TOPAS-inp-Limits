@@ -51,7 +51,7 @@ Usage
   py add_topas_limits.py my_file.inp -o new_file.inp
 """
 
-__version__ = "1.0.2"
+__version__ = "1.0.3"
 
 import argparse
 import re
@@ -471,13 +471,29 @@ def find_phases(text, code):
             else:
                 tm = re.compile(r"\S+").match(code, i, end)   # comments blanked
                 sg = tm.group(0) if tm else None
-        phases.append(dict(kw=kw, start=pos, end=end, ln=line_no(text, pos), sg=sg))
+        names = [line_no(text, m.start()) for m in
+                 re.compile(r"(?<![\w])phase_name(?![\w])").finditer(code, pos, end)]
+        phases.append(dict(kw=kw, start=pos, end=end, ln=line_no(text, pos), sg=sg,
+                           names=names))
     return phases
 
 
 def find_cell(text, code, flags, phases, skipped, notes):
     out = []
+    first = phases[0]["start"] if phases else len(code)
+    stray = [line_no(text, m.start()) for m in CELL_KW_RE.finditer(code, 0, first)
+             if isinstance(parse_value(code, m.end(), first, flags), dict)
+             and code[max(0, m.start() - 40):m.start()].split()[-1:] != ["occ"]]
+    if stray:
+        skipped.append((stray[0], "CHECK: cell parameters before the first recognised phase "
+                        f"(lines {', '.join(map(str, stray[:10]))}{' ...' if len(stray) > 10 else ''})"
+                        " - a phase may start with a macro the script does not recognise"))
     for ph in phases:
+        if len(ph["names"]) > 1:
+            skipped.append((ph["ln"], f"CHECK: phase at line {ph['ln']} has {len(ph['names'])} "
+                            f"phase_name lines ({', '.join(map(str, ph['names']))}) - a phase "
+                            "may start with a macro the script does not recognise (or these are "
+                            "#ifdef alternatives); its space group was applied to all of them"))
         found, equations = [], set()
         # keyword form: a @ 5.43 ...
         for m in CELL_KW_RE.finditer(code, ph["start"], ph["end"]):
