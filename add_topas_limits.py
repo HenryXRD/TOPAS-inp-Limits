@@ -51,7 +51,7 @@ Usage
   py add_topas_limits.py my_file.inp -o new_file.inp
 """
 
-__version__ = "1.0.6"
+__version__ = "1.0.7"
 
 import argparse
 import re
@@ -559,7 +559,8 @@ def find_phases(text, code):
                 tm = re.compile(r"\S+").match(code, i, end)   # comments blanked
                 sg = tm.group(0) if tm else None
         names = [line_no(text, m.start()) for m in
-                 re.compile(r"(?<![\w])phase_name(?![\w])").finditer(code, pos, end)]
+                 re.compile(r"(?<![\w])phase_name(?![\w])").finditer(code, pos, end)
+                 if not code[pos:m.start()].rstrip().endswith("(")]   # skip Get(phase_name)
         phases.append(dict(kw=kw, start=pos, end=end, ln=line_no(text, pos), sg=sg,
                            names=names))
     return phases
