@@ -25,9 +25,6 @@ py add_topas_limits.py my_file.inp
 - Choose a different output name with `-o`:
   `py add_topas_limits.py my_file.inp -o my_file_new.inp`
 - Save the report: `py add_topas_limits.py my_file.inp > report.txt`
-- If your file reuses parameter names in alternative phases that are never refined together (e.g. the same `cs_rutile` in an internal-standard phase and a sample phase), add `--separate-phases`:
-  `py add_topas_limits.py my_file.inp --separate-phases`
-  Each `str` phase then gets its own limits and start-value checks; names shared within one phase are still kept identical.
 
 Always open the output in TOPAS and do a test refinement before replacing your working file.
 
@@ -48,7 +45,8 @@ The defaults can be changed in the *Settings* block at the top of the script.
 ### Rules
 
 - **Existing limits are never changed.** If only one of `min`/`max` is present, only the missing one is inserted, keeping `min` before `max`.
-- **Constrained parameters get identical limits.** All instances of the same parameter name that can be active together get the same `min`/`max`: an existing limit on any instance is copied to the others, otherwise the default is used (for the cell, ±1 % of the first instance's start value).
+- **Constrained parameters get identical limits.** Within a phase, all instances of the same parameter name that can be active together get the same `min`/`max`: an existing limit on any instance is copied to the others, otherwise the default is used (for the cell, ±1 % of the first instance's start value).
+- **Names shared between phases are flagged.** Each `str` phase gets its own limits, and the report lists every parameter name used in more than one `str` phase, saying whether start values or limits differ between them. Check these are intentional: fine for alternative phases that are never refined together; if they are refined together, TOPAS treats them as one parameter, so make the start values and limits identical.
 - **`#ifdef` aware.** Instances of a name that sit in mutually exclusive `#ifdef`/`#ifndef`/`#if`/`#elseif`/`#else` branches (never active together) are treated as separate parameters, each with its own limits.
 - **Only refinable cell angles get limits.** `a`, `b`, `c` are always eligible. Angles are eligible only if the phase's `space_group` allows them to refine:
 
@@ -117,7 +115,7 @@ The script prints:
 
 ## Limitations
 
-- Instances that are mutually exclusive by some means other than `#ifdef` (e.g. switched by a macro, or alternative phases loaded in different runs) cannot be detected, so they are treated as active together. Use `--separate-phases` if they are in different `str` phases.
+- Within a phase, instances that are mutually exclusive by some means other than `#ifdef` (e.g. switched by a macro) cannot be detected, so they are treated as active together.
 - Only the macros listed above are recognised. Size or strain parameters inside your own macros are only handled where the standard macro calls appear in the `.inp` itself.
 
 ## AI-use disclosure

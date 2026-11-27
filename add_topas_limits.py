@@ -51,7 +51,7 @@ Usage
   py add_topas_limits.py my_file.inp -o new_file.inp
 """
 
-__version__ = "1.0.8"
+__version__ = "1.0.9"
 
 import argparse
 import re
@@ -805,7 +805,7 @@ def pick_limit(group, key, default, warnings, label):
     return None
 
 
-def process(text, separate_phases=False):
+def process(text):
     mask = code_mask(text)
     code = "".join(ch if m else " " for ch, m in zip(text, mask))
     flags = collect_flags(code)
@@ -848,10 +848,9 @@ def process(text, separate_phases=False):
     for idx, p in enumerate(params):
         if not p["name"]:
             key = f"__unnamed_{idx}"
-        elif separate_phases:
-            key = (p["name"], phase_of(p["insert_pos"]))
         else:
-            key = p["name"]
+            key = (p["name"], phase_of(p["insert_pos"]))     # one parameter per str phase
+        p["phase"] = phase_of(p["insert_pos"])
         groups[key].append(p)
 
     subgroups = []
@@ -892,6 +891,8 @@ def process(text, separate_phases=False):
         lo = pick_limit(group, "min", lo_def, warnings, label)
         hi = pick_limit(group, "max", hi_def, warnings, label)
         for p in group:
+            p["final"] = (plain(p["min"]) if p["min"] is not None else lo,
+                          plain(p["max"]) if p["max"] is not None else hi)
             add = []
             if p["min"] is None and lo is not None:
                 add.append(f"min {lo}")
@@ -905,6 +906,29 @@ def process(text, separate_phases=False):
                     pos = p["min_end"]
                 edits.append((pos, ins))
                 changed.append((p["ln"], p["label"], p["value"], ins.strip()))
+
+    # names shared between different str phases: limits set per phase, flag for checking
+    by_name = defaultdict(list)
+    for p in params:
+        if p["name"] and "final" in p:
+            by_name[p["name"]].append(p)
+    for name, inst in by_name.items():
+        ph_ids = sorted({p["phase"] for p in inst})
+        if len(ph_ids) < 2:
+            continue
+        lines = ", ".join(str(str_phases[k]["ln"]) for k in ph_ids if k >= 0)
+        starts = {norm(p["value"]) for p in inst}
+        finals = {tuple(None if x is None else norm(x) for x in p["final"]) for p in inst}
+        diff = []
+        if len(starts) > 1:
+            diff.append("start values differ")
+        if len(finals) > 1:
+            diff.append("limits differ")
+        what = (" - " + " and ".join(diff) + " between them (fine if they are never refined "
+                "together; if they are, TOPAS treats them as one parameter)") if diff \
+            else " - start values and limits are identical"
+        skipped.append((inst[0]["ln"], f"CHECK: {name} is shared by {len(ph_ids)} str phases "
+                        f"(phases at lines {lines}){what}; check this is intentional"))
 
     seen, uniq = set(), []
     for item in skipped:
@@ -934,9 +958,7 @@ def main():
     ap = argparse.ArgumentParser(description="Insert missing min/max limits in a TOPAS .inp")
     ap.add_argument("inp", help="input .inp file")
     ap.add_argument("-o", "--output", help="output file (default: <name>_limits.inp)")
-    ap.add_argument("--separate-phases", action="store_true",
-                    help="treat a parameter name used in different str phases as separate "
-                         "parameters (for alternative phases that are never refined together)")
+
     args = ap.parse_args()
 
     src = Path(args.inp)
@@ -947,14 +969,13 @@ def main():
         sys.exit("Output would overwrite the input; choose a different -o path.")
 
     text, enc = read_text(src)
-    out, changed, skipped, warnings, notes = process(text, args.separate_phases)
+    out, changed, skipped, warnings, notes = process(text)
     with open(dst, "w", encoding=enc, newline="") as f:
         f.write(out)
 
     print(f"add_topas_limits.py v{__version__}")
     print(f"Input : {src}\nOutput: {dst}")
-    if args.separate_phases:
-        print("Mode  : --separate-phases (shared names in different str phases treated separately)")
+
     print(f"\nPhases and notes: {len(notes)}")
     for n in notes:
         print(f"  {n}")
