@@ -51,7 +51,7 @@ Usage
   py add_topas_limits.py my_file.inp -o new_file.inp
 """
 
-__version__ = "1.0.5"
+__version__ = "1.0.6"
 
 import argparse
 import re
@@ -565,9 +565,10 @@ def find_phases(text, code):
     return phases
 
 
-def find_cell(text, code, flags, phases, skipped, notes):
+def find_cell(text, code, flags, phases, skipped, notes, first=None):
     out = []
-    first = phases[0]["start"] if phases else len(code)
+    if first is None:
+        first = phases[0]["start"] if phases else len(code)
     stray = [line_no(text, m.start()) for m in CELL_KW_RE.finditer(code, 0, first)
              if isinstance(parse_value(code, m.end(), first, flags), dict)
              and code[max(0, m.start() - 40):m.start()].split()[-1:] != ["occ"]]
@@ -823,7 +824,14 @@ def process(text):
     skipped[:] = [x for x in skipped
                   if not x[1].startswith(("CS", "Strain", "LVol", "e0_"))
                   or in_str(line_start_pos(text, x[0]))]
-    params += find_cell(text, code, flags, str_phases, skipped, notes)
+    for ph in phases:
+        if ph["kw"] != "str" and len(ph["names"]) > 1:
+            skipped.append((ph["ln"], f"CHECK: {ph['kw']} phase at line {ph['ln']} has "
+                            f"{len(ph['names'])} phase_name lines ({', '.join(map(str, ph['names']))})"
+                            " - a str phase may start inside it with a macro the script does not "
+                            "recognise; those phases were left unchanged"))
+    params += find_cell(text, code, flags, str_phases, skipped, notes,
+                        first=phases[0]["start"] if phases else len(code))
 
     states = preprocessor_contexts(code)
     for p in params:
