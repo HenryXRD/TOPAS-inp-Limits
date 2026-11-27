@@ -19,6 +19,8 @@ py add_topas_limits.py my_file.inp
 
 (On macOS/Linux use `python3` instead of `py`.)
 
+- If the file name or path contains spaces, put it in double quotes:
+  `py add_topas_limits.py "clinker QPA.inp"`
 - The original file is **never modified**. The output is written to `my_file_limits.inp` in the same folder.
 - Choose a different output name with `-o`:
   `py add_topas_limits.py my_file.inp -o my_file_new.inp`
