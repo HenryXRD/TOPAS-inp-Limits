@@ -12,6 +12,7 @@ authors:
     given-names: Henry
     orcid: "https://orcid.org/0000-0003-2271-4517"
 version: 1.0.9
+doi: "10.5281/zenodo.24585892"
 date-released: 2026-11-27
 license: MIT
 repository-code: "https://github.com/HenryXRD/TOPAS-inp-Limits"

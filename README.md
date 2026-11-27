@@ -1,5 +1,7 @@
 # TOPAS-inp-Limits
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.24585892.svg)](https://doi.org/10.5281/zenodo.24585892)
+
 Batch insertion of `min`/`max` limits for unit cell, crystallite size and strain parameters in TOPAS `.inp` files, plus a check that each phase's unit cell is refined and constrained as its space group requires.
 
 Large quantitative phase analysis (QPA) input files can contain hundreds of `str` and `hkl_Is` phases. Missing limits let a refinement wander off into unphysical values (e.g. negative strain, crystallite sizes of millions of nm, cells drifting onto a different phase). This script adds the missing limits without touching anything else in the file.
@@ -117,6 +119,12 @@ The script prints:
 
 - Within a phase, instances that are mutually exclusive by some means other than `#ifdef` (e.g. switched by a macro) cannot be detected, so they are treated as active together.
 - Only the macros listed above are recognised. Size or strain parameters inside your own macros are only handled where the standard macro calls appear in the `.inp` itself.
+
+## How to cite
+
+Spratt, H. *TOPAS-inp-Limits* (software). Zenodo. https://doi.org/10.5281/zenodo.24585892
+
+GitHub's **Cite this repository** button (from `CITATION.cff`) gives the same citation in APA and BibTeX formats.
 
 ## AI-use disclosure
 
