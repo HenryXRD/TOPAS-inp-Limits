@@ -6,6 +6,16 @@ Inserts missing min/max limits into a TOPAS .inp file for:
   * CS / CS_L / CS_G        -> min 32, max 1000   (CS is shorthand for CS_L)
   * LVol_FWHM_CS_G_L(...)   -> its CS_G and CS_L arguments, as above
   * e0_from_Strain(...)     -> its Strain_G and Strain_L arguments, as below
+  * PO(...) / Preferred_Orientation(...)   -> min 0.5, max 1.5 (March-Dollase)
+  * PO_Two_Directions(...)  -> both March-Dollase values min 0.5, max 1.5;
+                               fraction in the first direction min 0, max 1
+  * Smart PO (optional, --smart-po): str phases with no preferred-orientation model get a fixed
+    (not refined) March-Dollase line in the likely direction, chosen from
+    the phase name (po_directions.csv next to the script, plus a built-in
+    clay list) or, for unnamed layer silicates, from the cell:
+        PO(!po_<phase>, 1 min 0.5 max 1.5, , h k l)
+    Value 1 has no effect; change ! to a parameter name or @ to refine.
+    The directions are suggestions: the user must confirm each one is correct.
   * Strain_L / Strain_G     -> min 0,  max 0.5
   * Unit cell (a b c al be ga, and the Cubic/Tetragonal/Hexagonal/Trigonal/
     Rhombohedral macros) in every str / hkl_Is phase
@@ -47,11 +57,12 @@ Rules
 https://github.com/HenryXRD/TOPAS-inp-Limits  (MIT licence)
 
 Usage
-  py add_topas_limits.py my_file.inp
-  py add_topas_limits.py my_file.inp -o new_file.inp
+  py add_topas_limits_v2.py my_file.inp
+  py add_topas_limits_v2.py my_file.inp --smart-po
+  py add_topas_limits_v2.py my_file.inp -o new_file.inp
 """
 
-__version__ = "1.0.9"
+__version__ = "2"
 
 import argparse
 import re
@@ -66,6 +77,8 @@ LIMITS = {
     "CS_G": ("32", "1000"),
     "Strain_L": ("0", "0.5"),
     "Strain_G": ("0", "0.5"),
+    "PO": ("0.5", "1.5"),          # March-Dollase preferred orientation
+    "PO_fraction": ("0", "1"),     # fraction of crystals in the first PO_Two_Directions direction
 }
 CELL_FRACTION = 0.01        # +/- 1 % of start value
 CELL_MIN_DECIMALS = 4       # decimals used when writing cell limits
@@ -83,8 +96,14 @@ MULTI_MACROS = {
     "LVol_FWHM_CS_G_L": [(4, 5, "CS_G"), (6, 7, "CS_L")],
     # e0_from_Strain(e0, sg, sgv, sl, slv)
     "e0_from_Strain": [(1, 2, "Strain_G"), (3, 4, "Strain_L")],
+    # March-Dollase: PO(c, v, s, hkl) and Preferred_Orientation(c, v, hkl)
+    "PO": [(0, 1, "PO")],
+    "Preferred_Orientation": [(0, 1, "PO")],
+    # PO_Two_Directions(c1, v1, ang1, hkl1, c2, v2, ang2, hkl2, w1c, w1v)
+    "PO_Two_Directions": [(0, 1, "PO", "PO1"), (4, 5, "PO", "PO2"), (8, 9, "PO_fraction", "fraction")],
 }
-CS_RE = re.compile(r"(?<![\w])(LVol_FWHM_CS_G_L|e0_from_Strain|CS_L|CS_G|CS|Strain_L|Strain_G)\(")
+CS_RE = re.compile(r"(?<![\w])(LVol_FWHM_CS_G_L|e0_from_Strain|Preferred_Orientation|PO_Two_Directions|PO|"
+                   r"CS_L|CS_G|CS|Strain_L|Strain_G)\(")
 # "(" must follow the macro name directly
 CELL_KW_RE = re.compile(r"(?<![\w.`])(a|b|c|al|be|ga)(?=\s)")
 CELL_MACROS = {
@@ -491,14 +510,14 @@ def find_cs(text, code, flags, skipped):
         call = text[m.start():close + 1].strip()
 
         if macro in MULTI_MACROS:
-            pairs = [(ni, vi, kind) for ni, vi, kind in MULTI_MACROS[macro]
-                     if vi < len(args) and code[args[vi][0]:args[vi][1]].strip()]
-            label_fmt = macro + ":{}"
+            pairs = [(e[0], e[1], e[2], e[3] if len(e) > 3 else e[2]) for e in MULTI_MACROS[macro]
+                     if e[1] < len(args) and code[args[e[1]][0]:args[e[1]][1]].strip()]
+            label_fmt = macro + ":{}" if len(MULTI_MACROS[macro]) > 1 else macro
         else:
-            pairs = [(0 if len(args) > 1 else None, len(args) - 1, macro)]
+            pairs = [(0 if len(args) > 1 else None, len(args) - 1, macro, macro)]
             label_fmt = "{}"
 
-        for ni, vi, kind in pairs:
+        for ni, vi, kind, lbl in pairs:
             val_start, val_end = args[vi]
             name = None
             if ni is not None:
@@ -506,7 +525,7 @@ def find_cs(text, code, flags, skipped):
                     bare = tok.lstrip("!@")
                     if bare and bare not in flags and IDENT_RE.fullmatch(tok):
                         name = bare
-            label = label_fmt.format(kind)
+            label = label_fmt.format(lbl)
             p = parse_value(code, val_start, val_end, flags, max_names=0)
             if p is None:
                 skipped.append((ln, f"{label}: non-numeric value: {call}"))
@@ -558,11 +577,22 @@ def find_phases(text, code):
             else:
                 tm = re.compile(r"\S+").match(code, i, end)   # comments blanked
                 sg = tm.group(0) if tm else None
-        names = [line_no(text, m.start()) for m in
-                 re.compile(r"(?<![\w])phase_name(?![\w])").finditer(code, pos, end)
-                 if not code[pos:m.start()].rstrip().endswith("(")]   # skip Get(phase_name)
+        pn_matches = [m for m in
+                      re.compile(r"(?<![\w])phase_name(?![\w])").finditer(code, pos, end)
+                      if not code[pos:m.start()].rstrip().endswith("(")]   # skip Get(phase_name)
+        names = [line_no(text, m.start()) for m in pn_matches]
+        pname = None
+        if pn_matches:
+            i = skip_ws(text, pn_matches[0].end(), end)
+            if i < end and text[i] == '"':
+                j = text.find('"', i + 1, end)
+                pname = text[i + 1:j if j != -1 else end]
+            else:
+                tm = re.compile(r"\S+").match(code, i, end)
+                pname = tm.group(0) if tm else None
         phases.append(dict(kw=kw, start=pos, end=end, ln=line_no(text, pos), sg=sg,
-                           names=names))
+                           names=names, pname=pname,
+                           pname_pos=pn_matches[0].start() if pn_matches else None))
     return phases
 
 
@@ -634,6 +664,7 @@ def find_cell(text, code, flags, phases, skipped, notes, first=None):
             elif "Rhombohedral" in macros_used:
                 detail = "R"
         angles, warn = eligible_angles(system, detail, angle_vals)
+        ph.update(system=system, detail=detail, found=found)
         sg_txt = ph["sg"] if ph["sg"] else "none"
         notes.append(f"{ph['kw']} at line {ph['ln']}: space group {sg_txt} -> "
                      f"{system or 'unknown'}; angles refined: "
@@ -789,6 +820,550 @@ def split_coactive(group):
     return sorted(sets.values(), key=lambda g: g[0]["ln"])
 
 
+
+# ----------------------------------------------------------- smart PO
+PO_DB_NAME = "po_directions.csv"
+PO_EXISTING_RE = re.compile(r"(?<![\w])(?:PO\w*|Preferred_Orientation\w*)\s*\(|"
+                            r"(?<![\w])spherical_harmonics_hkl(?![\w])")
+# clays: 0 0 1 with the layer-silicate sheet check (a ~5.0-5.5, b ~8.7-9.4 A)
+CLAY_NAMES = """kaolinite dickite nacrite halloysite illite smectite montmorillonite
+beidellite nontronite saponite hectorite stevensite sauconite vermiculite chlorite
+clinochlore chamosite corrensite rectorite talc pyrophyllite clay""".split()
+CHECKS = ("", "hex", "a_longest", "b_longest", "c_longest",
+          "a_shortest", "b_shortest", "c_shortest", "sheet_ab")
+
+
+def load_po_db(path, warnings):
+    """[(names, (h, k, l), check, source)] from the CSV, then the clay list."""
+    import csv
+    db = []
+    if path and Path(path).is_file():
+        with open(path, newline="", encoding="utf-8-sig") as f:
+            for n, row in enumerate(csv.DictReader(f), start=2):
+                row = {(k or "").strip().lower(): (v or "").strip() for k, v in row.items()}
+                if row.get("phase", "").startswith("#"):
+                    continue                            # section heading / comment row
+                names = [row.get("phase", "")] + [a for a in row.get("aliases", "").split(";")]
+                names = [x.strip() for x in names if x.strip()]
+                raw = [row.get(k, "").strip().lower() for k in ("h", "k", "l")]
+                try:
+                    if all(r in ("", "none", "-") for r in raw):
+                        hkl = None                      # recognised, but no PO direction
+                    else:
+                        hkl = tuple(int(r) for r in raw)
+                except ValueError:
+                    warnings.append(f"{Path(path).name} line {n}: h k l not integers - row ignored")
+                    continue
+                check = row.get("check", "").lower()
+                if check not in CHECKS:
+                    warnings.append(f"{Path(path).name} line {n}: unknown check '{check}' - "
+                                    f"row ignored (use one of: {', '.join(c for c in CHECKS if c)})")
+                    continue
+                unsure = row.get("confidence", "").lower() in ("check", "uncertain", "verify")
+                if names:
+                    db.append((names, hkl, check, Path(path).name, unsure))
+    db.append((CLAY_NAMES, (0, 0, 1), "sheet_ab", "built-in clay list", False))
+    return db
+
+
+# chemical prefixes that may be joined to a mineral name, e.g. magnesiohornblende
+NAME_PREFIX = (r"(?:(?:magnesio|ferro|ferri|fluoro|chloro|oxo|alumino|mangano|mangani|"
+               r"titano|chromio|potassic|sodic|parvo|clino|ortho)-?)*")
+
+
+def match_po(pname, db, heading=False, strict=False):
+    """Longest whole-word name match (chemical prefixes and plurals allowed) -> entry or None.
+    heading=True: only group-level matches count (a plural, 'X group', or a generic group
+    name such as Amphibole or Feldspar), so a single mineral named in a comment is not
+    taken as the heading for the phases after it."""
+    low = pname.lower()
+    best, hkls = None, set()
+    for names, hkl, check, src, unsure in db:
+        for nm in names:
+            pat = (r"(?<![a-z])" + NAME_PREFIX + "(" + re.escape(nm.lower()) + r")(e?s)?(?![a-z])"
+                   r"(\s+(?:super|sub)?(?:group|series|family))?")
+            for m in re.finditer(pat, low):
+                hkls.add(hkl)
+                if heading and not (m.group(2) or m.group(3) or nm.lower() in GENERIC_GROUPS):
+                    continue
+                if best is None or len(nm) > len(best[0]):
+                    best = (nm, hkl, check, src, unsure)
+    if (strict or heading) and best and len(hkls) > 1:
+        return None          # a comment naming minerals with different directions: ambiguous
+    return best
+
+
+# group names that may stand alone as a section heading
+GENERIC_GROUPS = {"amphibole", "clinoamphibole", "orthoamphibole", "pyroxene", "clinopyroxene",
+                  "orthopyroxene", "feldspar", "k-feldspar", "plagioclase", "mica", "clay",
+                  "olivine", "garnet", "spinel", "chlorite", "smectite"}
+
+
+def by_system(nm, hkl, ph):
+    """Generic 'amphibole' / 'pyroxene': 2 1 0 for an orthorhombic cell."""
+    if nm.lower() in ("amphibole", "pyroxene") and ph.get("system") == "orthorhombic":
+        return (2, 1, 0)
+    return hkl
+
+
+# ----------------------------------------------------------- comments as hints
+HEADING_FAMILIES = [
+    # (family, words) - singular or plural, matched as whole words
+    ("layer", r"phyllosilicate|sheet silicate|layer silicate|clay mineral|kaolin"),
+    ("chain", r"inosilicate|chain silicate|pyroxenoid"),
+    ("silicate", r"silicate|nesosilicate|orthosilicate|sorosilicate|cyclosilicate|"
+                 r"ring silicate|tectosilicate|framework silicate|zeolite"),
+    ("nonsilicate", r"native element|element|sulfide|sulphide|sulfosalt|sulphosalt|halide|"
+                    r"oxide|hydroxide|oxyhydroxide|carbonate|nitrate|borate|sulfate|sulphate|"
+                    r"chromate|molybdate|tungstate|phosphate|arsenate|vanadate|organic"),
+    ("other", r"clinker|cement|hydrate|hydration product|standard|internal standard|spike|"
+              r"amorphous|glass|slag|fly ash|ponkcs|unknown"),
+]
+HEADING_RANK = {"entry": 5, "layer": 4, "chain": 3, "silicate": 2, "nonsilicate": 1, "other": 1}
+# Nickel-Strunz codes, e.g. 9.DE.10 or 09.DA
+STRUNZ_RE = re.compile(r"(?<![\w.])0?(10|[1-9])\.([A-J])([A-Z])?(?:\.\d{2,3}[a-z]?)?(?![\w])")
+STRUNZ_FAMILIES = {"9.DA": "pyroxene", "9.DE": "amphibole", "9.D": "chain", "9.E": "layer"}
+CODE_WORDS = set("""str STR hkl_Is xo_Is d_Is phase_name space_group a b c al be ga prm local
+scale site occ beq x y z MVW Cubic Tetragonal Hexagonal Trigonal Rhombohedral CS CS_L CS_G
+Strain_L Strain_G PO PO_Two_Directions Preferred_Orientation LVol_FWHM_CS_G_L e0_from_Strain
+macro Out r_bragg num_posns rigid load lor_fwhm gauss_fwhm spherical_harmonics_hkl
+TCHZ_Peak_Type Zero_Error cell_mass cell_volume weight_percent""".split())
+
+
+def strunz_family(text):
+    best = None
+    for m in STRUNZ_RE.finditer(text):
+        cls, sub, fam = m.group(1), m.group(2), m.group(3) or ""
+        if cls != "9":
+            f = "nonsilicate"
+        else:
+            f = STRUNZ_FAMILIES.get(f"9.{sub}{fam}") or STRUNZ_FAMILIES.get(f"9.{sub}") or "silicate"
+        if best is None or HEADING_RANK.get(f, 3) > HEADING_RANK.get(best, 3):
+            best = f
+    return best
+
+
+def classify_heading(text, db):
+    """Section heading -> dict(kind, family, entry) or None."""
+    hit = match_po(text, db, heading=True)
+    if hit:
+        nm = hit[0].lower()
+        fam = ("nopo" if hit[1] is None else "layer" if hit[2] == "sheet_ab" else
+               "chain" if re.search(r"amphibole|pyroxene", nm) or
+               hit[1] in ((1, 1, 0), (2, 1, 0)) and hit[2] == "c_shortest" else "mineral")
+        return dict(kind="entry", family=fam, entry=hit)
+    sf = strunz_family(text)
+    if sf in ("pyroxene", "amphibole"):
+        e = match_po(sf, db)
+        if e:
+            return dict(kind="entry", family="chain", entry=e)
+        sf = "chain"
+    low = text.lower()
+    best = None
+    for fam, words in HEADING_FAMILIES:
+        if re.search(r"(?<![a-z])(?:" + words + r")s?(?![a-z])", low):
+            if best is None or HEADING_RANK[fam] > HEADING_RANK[best]:
+                best = fam
+    if sf and (best is None or HEADING_RANK.get(sf, 0) > HEADING_RANK[best]):
+        best = sf
+    return dict(kind="family", family=best, entry=None) if best else None
+
+
+def comment_text(line):
+    t = line.strip()
+    t = re.sub(r"^(?:/\*+|\*+/|'+|\*+)", "", t)
+    t = re.sub(r"\*+/\s*$", "", t)
+    return t.strip(" \t'*=-_#~:.|")
+
+
+def code_like(t):
+    if not t or "smart PO" in t or "@" in t or re.search(r"(?<![\w])(?:phase_name|space_group)(?![\w])", t):
+        return True
+    first = re.match(r"[A-Za-z_]\w*", t)
+    return bool(first and first.group(0) in CODE_WORDS and
+                re.match(r"[A-Za-z_]\w*\s*[(@!\d\-\"]|[A-Za-z_]\w*\s+[A-Za-z_!@]\w*\s*[@\d(]", t))
+
+
+def line_comment(text, mask, a, b):
+    """Trailing comment on text[a:b] (outside strings), or ''."""
+    in_s = False
+    for i in range(a, b):
+        ch = text[i]
+        if ch == '"':
+            in_s = not in_s
+        elif not in_s and (ch == "'" or text.startswith("/*", i)):
+            return comment_text(text[i:b])
+    return ""
+
+
+def comment_hints(text, code, mask, str_phases, db, first_phase):
+    """For each str phase: attached comments (directly above it, or trailing on its str /
+    phase_name line) and the nearest section heading above it."""
+    import bisect
+    starts = [0] + [m.end() for m in re.finditer("\n", text)]
+    ends = [s - 1 for s in starts[1:]] + [len(text)]
+    is_com = []
+    for a, b in zip(starts, ends):
+        is_com.append(bool(text[a:b].strip()) and not code[a:b].strip())
+    first_ln = text.count("\n", 0, first_phase)            # 0-based line index
+    # comments before the first phase only count if they sit directly above it
+    lo = first_ln
+    while lo > 0 and (is_com[lo - 1] or not text[starts[lo - 1]:ends[lo - 1]].strip()):
+        lo -= 1
+    headings = []                                          # (line index, text, result)
+    for i, (a, b) in enumerate(zip(starts, ends)):
+        if is_com[i] and (i >= lo):
+            t = comment_text(text[a:b])
+            if t and not code_like(t):
+                r = classify_heading(t, db)
+                if r:
+                    headings.append((i, t, r))
+    h_lines = [h[0] for h in headings]
+    for ph in str_phases:
+        li = text.count("\n", 0, ph["start"])
+        attached = []
+        j = li - 1
+        while j >= 0 and (is_com[j] or not text[starts[j]:ends[j]].strip()):
+            if is_com[j]:
+                t = comment_text(text[starts[j]:ends[j]])
+                if t and not code_like(t):
+                    attached.append((j + 1, t))
+            j -= 1
+        for pos in (ph["start"], ph.get("pname_pos")):
+            if pos is not None:
+                k = text.count("\n", 0, pos)
+                t = line_comment(text, mask, starts[k], ends[k])
+                if t and not code_like(t):
+                    attached.append((k + 1, t))
+        ph["attached"] = attached
+        k = bisect.bisect_left(h_lines, li) - 1
+        ph["heading"] = None if k < 0 else dict(headings[k][2], ln=headings[k][0] + 1,
+                                                 text=headings[k][1])
+
+
+def phase_cell(ph):
+    cell = {}
+    for p in ph.get("found", []):
+        v = num(p["value"].split("`")[0].split("_")[0])
+        if v is not None:
+            cell.setdefault(p["param"], v)
+    a = cell.get("a")
+    sysm = ph.get("system")
+    if a is not None:
+        if sysm in ("cubic", "tetragonal", "hexagonal", "trigonal"):
+            cell.setdefault("b", a)
+        if sysm == "cubic" or (sysm == "trigonal" and ph.get("detail") == "R"):
+            cell.setdefault("c", a)
+    if sysm in ("hexagonal",) or (sysm == "trigonal" and ph.get("detail") != "R"):
+        cell.setdefault("ga", 120.0)
+    return cell
+
+
+def sheet_signature(cell):
+    a, b, c = cell.get("a"), cell.get("b"), cell.get("c")
+    return (a is not None and b is not None and c is not None
+            and 5.0 <= a <= 5.5 and 8.7 <= b <= 9.4 and abs(b / a - 3 ** 0.5) <= 0.05
+            and c >= 7.0)
+
+
+CHAIN_CELLS = [
+    # (label, hkl, a range, b range, c range, beta range or None)
+    ("clinoamphibole", (1, 1, 0), (9.5, 10.1), (17.5, 18.6), (5.2, 5.45), (101, 108)),
+    ("clinopyroxene", (1, 1, 0), (9.4, 10.0), (8.5, 9.3), (5.1, 5.5), (105, 110)),
+    ("orthopyroxene", (2, 1, 0), (18.1, 18.6), (8.6, 9.2), (5.1, 5.35), None),
+    ("orthoamphibole", (2, 1, 0), (18.4, 18.8), (17.7, 18.2), (5.2, 5.35), None),
+]
+
+
+def chain_signature(cell):
+    a, b, c, be = cell.get("a"), cell.get("b"), cell.get("c"), cell.get("be", 90.0)
+    if None in (a, b, c):
+        return None
+    for label, hkl, ra, rb, rc, rbe in CHAIN_CELLS:
+        if ra[0] <= a <= ra[1] and rb[0] <= b <= rb[1] and rc[0] <= c <= rc[1] and \
+                (rbe is None and abs(be - 90) < 0.5 or rbe and rbe[0] <= be <= rbe[1]):
+            return label, hkl
+    return None
+
+
+def check_cell(check, cell, ph):
+    """None if OK, else the reason it failed."""
+    a, b, c = cell.get("a"), cell.get("b"), cell.get("c")
+    if check == "":
+        return None
+    if check == "hex":
+        if ph.get("system") in ("hexagonal", "trigonal") and ph.get("detail") != "R" \
+                and abs(cell.get("ga", 0) - 120) < 0.5:
+            return None
+        return "not in a hexagonal-axes setting"
+    if check == "sheet_ab":
+        return None if sheet_signature(cell) else \
+            "cell does not have the layer-silicate sheet in a, b (a ~5.0-5.5, b ~8.7-9.4 A)"
+    axis = check[0]
+    vals = {"a": a, "b": b, "c": c}
+    if any(v is None for v in vals.values()):
+        return "cell lengths not all found"
+    others = [v for k, v in vals.items() if k != axis]
+    if check.endswith("_shortest"):
+        return None if vals[axis] < min(others) else f"{axis} is not the shortest axis"
+    return None if vals[axis] > max(others) else f"{axis} is not the longest axis"
+
+
+def smart_po(text, code, str_phases, db, edits, skipped, smart_report, no_po=None,
+             mask=None, use_comments=True):
+    if use_comments and str_phases:
+        comment_hints(text, code, mask, str_phases, db, min(p["start"] for p in str_phases))
+    idents = set(re.findall(r"[A-Za-z_]\w*", code))
+    states = preprocessor_contexts(code)
+    nl = "\r\n" if "\r\n" in text else "\n"
+    for ph in str_phases:
+        if PO_EXISTING_RE.search(code, ph["start"], ph["end"]):
+            continue                                   # already has a PO model
+        pname = ph.get("pname") or ""
+        label_p = pname or "(no phase_name)"
+        cell = phase_cell(ph)
+        head = ph.get("heading")
+        fam = head["family"] if head else None
+        h_txt = f"section comment '{head['text'][:40]}' (line {head['ln']})" if head else ""
+        hit = match_po(pname, db) if pname else None
+        via = ""
+        if not hit:                                    # comments directly above / beside it
+            for cln, t in ph.get("attached", []):
+                hit = match_po(t, db, strict=True)
+                if hit:
+                    via = f" from comment on line {cln}"
+                    break
+        if hit and hit[1] is None:
+            if no_po is not None:
+                no_po.append((ph["ln"], label_p, f"'{hit[0]}'{via}"))
+            continue
+        unsure = bool(via)
+        if hit:
+            nm, hkl, check, src, u = hit
+            hkl, unsure = by_system(nm, hkl, ph), unsure or u
+            why = check_cell(check, cell, ph)
+            if why:
+                skipped.append((ph["ln"], f"CHECK: smart PO not added to '{label_p}' (matched "
+                                f"'{nm}'{via}, {' '.join(map(str, hkl))}): {why} - check the setting"))
+                continue
+            reason = f"'{nm}' ({src}){via}"
+            if via and check == "sheet_ab":
+                unsure = u                             # the cell confirms the layer silicate
+            if head and head["kind"] == "entry" and head["entry"][1] is not None and \
+                    by_system(head["entry"][0], head["entry"][1], ph) != hkl:
+                reason += (f"; note: {h_txt} suggests "
+                           f"{' '.join(map(str, by_system(head['entry'][0], head['entry'][1], ph)))}")
+        elif fam == "nopo":
+            if no_po is not None:
+                no_po.append((ph["ln"], label_p, f"'{head['entry'][0]}' group, {h_txt}"))
+            continue
+        elif fam in (None, "silicate", "layer") and sheet_signature(cell):
+            hkl, reason = (0, 0, 1), "clay inferred from cell (a, b layer-silicate sheet)"
+            if fam == "layer":
+                reason += f" and {h_txt}"
+        elif head and head["kind"] == "entry" and (
+                fam != "chain" and chain_signature(cell) or fam != "layer" and sheet_signature(cell)):
+            sig = "a chain silicate" if chain_signature(cell) else "a layer silicate"
+            skipped.append((ph["ln"], f"CHECK: smart PO not added to '{label_p}': {h_txt} "
+                            f"suggests '{head['entry'][0]}' but the cell looks like {sig} - "
+                            "check the phase and the heading"))
+            continue
+        elif head and head["kind"] == "entry":
+            nm, hkl, check, src, u = head["entry"]
+            hkl = by_system(nm, hkl, ph)
+            why = check_cell(check, cell, ph)
+            if why == "cell lengths not all found" or (why and fam != "chain"):
+                skipped.append((ph["ln"], f"CHECK: smart PO not added to '{label_p}' ({h_txt} "
+                                f"suggests {' '.join(map(str, hkl))}): {why}"))
+                continue
+            if fam == "chain":
+                sig = chain_signature(cell)
+                if sig:
+                    hkl = sig[1]
+                elif ph.get("system") == "monoclinic":
+                    hkl = (1, 1, 0)
+                elif ph.get("system") == "orthorhombic":
+                    hkl = (2, 1, 0)
+                else:
+                    skipped.append((ph["ln"], f"CHECK: smart PO not added to '{label_p}' "
+                                    f"({h_txt}): cell is not monoclinic or orthorhombic"))
+                    continue
+            reason, unsure = f"'{nm}' group from {h_txt}", True
+        elif fam == "layer":
+            skipped.append((ph["ln"], f"CHECK: smart PO not added to '{label_p}' ({h_txt} "
+                            "suggests 0 0 1): cell does not have the layer-silicate sheet in a, b"))
+            continue
+        elif fam in (None, "silicate", "chain") and chain_signature(cell):
+            label, hkl = chain_signature(cell)
+            reason, unsure = f"{label} inferred from cell", True
+            if fam == "chain":
+                reason += f" and {h_txt}"
+        else:
+            sig = chain_signature(cell)
+            sig = sig[0] if sig else "layer silicate" if sheet_signature(cell) else None
+            if sig:
+                skipped.append((ph["ln"], f"CHECK: smart PO not added to '{label_p}': the cell "
+                                f"looks like a {sig} but it is under {h_txt} - check the phase "
+                                "and the heading"))
+            continue
+        base = "po_" + (re.sub(r"[^A-Za-z0-9]+", "_", pname).strip("_") or f"line{ph['ln']}")
+        if not base[3:4].isalpha():
+            base = "po_p" + base[3:]
+        name, k = base, 2
+        while name in idents:
+            name, k = f"{base}_{k}", k + 1
+        idents.add(name)
+        # put it after phase_name if that is in the same #ifdef branch as the phase start,
+        # otherwise straight after the str / STR(...) line
+        anchor = ph["start"]
+        if ph.get("pname_pos") is not None and \
+                context_at(states, ph["pname_pos"]) == context_at(states, ph["start"]):
+            anchor = ph["pname_pos"]
+        eol = text.find("\n", anchor)
+        eol = len(text) if eol == -1 else eol + 1
+        line_start = text.rfind("\n", 0, anchor) + 1
+        indent = re.match(r"[ \t]*", text[line_start:]).group(0)
+        if anchor == ph["start"]:
+            indent += "   "
+        hkl_s = " ".join(map(str, hkl))
+        if unsure:
+            line = (f"{indent}PO(!{name}, 1 min 0.5 max 1.5, , {hkl_s}) ' smart PO: UNCERTAIN "
+                    f"direction (sources disagree or it depends on the setting) from {reason} - "
+                    f"CHECK and change {hkl_s} if needed before refining; not refined")
+            reason += " - UNCERTAIN, check direction"
+        else:
+            line = (f"{indent}PO(!{name}, 1 min 0.5 max 1.5, , {hkl_s}) ' smart PO: likely "
+                    f"direction from {reason}; not refined - change !{name} to {name} to refine")
+        ins = line + nl
+        if eol == len(text) and not text.endswith("\n"):
+            ins = nl + line
+        edits.append((eol, ins))
+        smart_report.append((line_no(text, anchor) + 1, pname or "(no phase_name)", hkl_s, reason))
+
+
+# ----------------------------------------------------------- beq
+ELEMENTS = set("""H He Li Be B C N O F Ne Na Mg Al Si P S Cl Ar K Ca Sc Ti V Cr Mn Fe Co Ni Cu
+Zn Ga Ge As Se Br Kr Rb Sr Y Zr Nb Mo Tc Ru Rh Pd Ag Cd In Sn Sb Te I Xe Cs Ba La Ce Pr Nd Pm
+Sm Eu Gd Tb Dy Ho Er Tm Yb Lu Hf Ta W Re Os Ir Pt Au Hg Tl Pb Bi Po At Rn Fr Ra Ac Th Pa U Np
+Pu Am Cm Bk Cf Es Fm Md No Lr D""".split())
+BEQ_GUI = "1"                  # value TOPAS GUI assumes when a str / CIF has no beq
+# smart beq: H 2; O and similar anion-forming non-metals 1; metals, metalloids and
+# positively charged non-metals (S+6 in sulfate, C+4, P+5 ...) 0.5
+BEQ_H = {"H", "D"}
+BEQ_ANION = {"C", "N", "O", "F", "S", "Cl", "Se", "Br", "I", "He", "Ne", "Ar", "Kr", "Xe", "Rn"}
+BEQ_VALUES = {"H": "2", "anion": "1", "other": "0.5"}
+SITE_RE = re.compile(r"(?<![\w])site(?![\w])")
+SITE_KW = {"x", "y", "z", "occ", "beq", "num_posns", "rand_xyz", "inter", "adps", "ADPs",
+           "u11", "u22", "u33", "u12", "u13", "u23", "scale_occ", "in_cartesian"}
+BEQ_PRESENT_RE = re.compile(r"(?<![\w])(?:beq|Beq\w*|BEQ\w*|u11|adps|ADPs)(?![\w])")
+
+
+def element_of(tok):
+    """'Si+4' -> ('Si', '+'), 'O-2' -> ('O', '-'), 'al' -> ('Al', ''); None if unknown."""
+    m = re.match(r"([A-Za-z])([A-Za-z]?)", tok)
+    if not m:
+        return None
+    two = (m.group(1) + m.group(2)).capitalize()
+    el = two if m.group(2) and two in ELEMENTS else m.group(1).upper()
+    if el not in ELEMENTS:
+        return None
+    sign = re.search(r"[+-]", tok)
+    return el, sign.group(0) if sign else ""
+
+
+def smart_beq_value(el, sign):
+    if el in BEQ_H:
+        return BEQ_VALUES["H"]
+    if el in BEQ_ANION and sign != "+":
+        return BEQ_VALUES["anion"]
+    return BEQ_VALUES["other"]
+
+
+def consume_value(code, i, end):
+    """Skip '[name tokens] value [min .. max .. ...]' or '= ... ;'. Returns (end, number or None)."""
+    i = skip_ws(code, i, end)
+    if i < end and code[i] == "=":
+        j = code.find(";", i, end)
+        return (end if j == -1 else j + 1), None
+    number = None
+    for _ in range(4):
+        vm = VALUE_RE.match(code, i, end)
+        if vm:
+            number = num(vm.group(0).split("`")[0])
+            i = vm.end()
+            break
+        im = IDENT_RE.match(code, i, end)
+        if not im or im.group(0).lstrip("!@") in SITE_KW:
+            return i, None
+        i = skip_ws(code, im.end(), end)
+        if i < end and code[i] == "=":                 # name = equation;
+            j = code.find(";", i, end)
+            return (end if j == -1 else j + 1), None
+    while True:
+        j = skip_ws(code, i, end)
+        im = re.compile(r"[A-Za-z_]\w*").match(code, j, end)
+        if not im or im.group(0) not in ATTR_KW:
+            return i, number
+        _, i = read_attr_value(code, im.end(), end)
+
+
+def insert_beq(text, code, str_phases, mode, edits, skipped, beq_report):
+    for ph in str_phases:
+        sites = [m for m in SITE_RE.finditer(code, ph["start"], ph["end"])]
+        counts, n_sites = {}, 0
+        for k, m in enumerate(sites):
+            s_end = sites[k + 1].start() if k + 1 < len(sites) else ph["end"]
+            if BEQ_PRESENT_RE.search(code, m.end(), s_end):
+                continue                                # beq (or ADPs) already there
+            i = skip_ws(code, m.end(), s_end)
+            nm = re.compile(r"\S+").match(code, i, s_end)
+            if not nm:
+                continue
+            site_name, i, last = nm.group(0), nm.end(), nm.end()
+            species = []
+            while True:
+                j = skip_ws(code, i, s_end)
+                im = re.compile(r"[A-Za-z_]\w*").match(code, j, s_end)
+                if not im or im.group(0) not in SITE_KW:
+                    break
+                i = im.end()
+                if im.group(0) == "occ":
+                    j = skip_ws(code, i, s_end)
+                    em = re.compile(r"[^\s()]+").match(code, j, s_end)
+                    if not em:
+                        break
+                    i, occ = consume_value(code, em.end(), s_end)
+                    species.append((em.group(0), occ))
+                elif im.group(0) not in ("rand_xyz", "in_cartesian"):
+                    i, _ = consume_value(code, i, s_end)
+                last = i
+            if not species:
+                skipped.append((line_no(text, m.start()), f"CHECK: site {site_name} in "
+                                f"'{ph.get('pname') or 'str'}': no occ found - beq not inserted"))
+                continue
+            if mode == "smart":
+                parsed = [(element_of(t), o) for t, o in species]
+                if any(e is None for e, _ in parsed):
+                    bad = [t for (t, _), (e, _) in zip(species, parsed) if e is None]
+                    skipped.append((line_no(text, m.start()), f"CHECK: site {site_name} in "
+                                    f"'{ph.get('pname') or 'str'}': element '{bad[0]}' not "
+                                    "recognised - beq not inserted"))
+                    continue
+                # the species with the largest numeric occupancy decides (first if unknown)
+                best = max(range(len(parsed)),
+                           key=lambda q: (parsed[q][1] if parsed[q][1] is not None else -1, -q))
+                val = smart_beq_value(*parsed[best][0])
+            else:
+                val = BEQ_GUI
+            edits.append((last, f" beq {val}"))
+            counts[val] = counts.get(val, 0) + 1
+            n_sites += 1
+        if n_sites:
+            detail = ", ".join(f"beq {v} x{c}" for v, c in
+                               sorted(counts.items(), key=lambda x: -float(x[0])))
+            beq_report.append((ph["ln"], ph.get("pname") or "(no phase_name)", n_sites, detail))
+
+
 # ----------------------------------------------------------- main logic
 def pick_limit(group, key, default, warnings, label):
     existing = {}
@@ -805,7 +1380,9 @@ def pick_limit(group, key, default, warnings, label):
     return None
 
 
-def process(text):
+def process(text, po_db=None, beq=None):
+    if not hasattr(process, "use_comments"):
+        process.use_comments = True
     mask = code_mask(text)
     code = "".join(ch if m else " " for ch, m in zip(text, mask))
     flags = collect_flags(code)
@@ -823,7 +1400,7 @@ def process(text):
 
     params = [p for p in find_cs(text, code, flags, skipped) if in_str(p["start"])]
     skipped[:] = [x for x in skipped
-                  if not x[1].startswith(("CS", "Strain", "LVol", "e0_"))
+                  if not x[1].startswith(("CS", "Strain", "LVol", "e0_", "PO", "Preferred"))
                   or in_str(line_start_pos(text, x[0]))]
     for ph in phases:
         if ph["kw"] != "str" and len(ph["names"]) > 1:
@@ -930,6 +1507,16 @@ def process(text):
         skipped.append((inst[0]["ln"], f"CHECK: {name} is shared by {len(ph_ids)} str phases "
                         f"(phases at lines {lines}){what}; check this is intentional"))
 
+    smart_report, no_po = [], []
+    if po_db is not None:
+        smart_po(text, code, str_phases, po_db, edits, skipped, smart_report, no_po,
+                 mask=mask, use_comments=process.use_comments)
+    process.no_po = no_po
+    beq_report = []
+    if beq:
+        insert_beq(text, code, str_phases, beq, edits, skipped, beq_report)
+    process.beq_report = beq_report
+
     seen, uniq = set(), []
     for item in skipped:
         if item not in seen:
@@ -941,7 +1528,7 @@ def process(text):
     for pos, ins in sorted(edits, reverse=True):
         out = out[:pos] + ins + out[pos:]
     changed.sort()
-    return out, changed, skipped, warnings, notes
+    return out, changed, skipped, warnings, notes, smart_report
 
 
 def read_text(path):
@@ -958,6 +1545,18 @@ def main():
     ap = argparse.ArgumentParser(description="Insert missing min/max limits in a TOPAS .inp")
     ap.add_argument("inp", help="input .inp file")
     ap.add_argument("-o", "--output", help="output file (default: <name>_limits.inp)")
+    ap.add_argument("--smart-po", action="store_true",
+                    help="add fixed (not refined) March-Dollase PO lines in the likely direction "
+                         "to str phases that have no PO model; check every direction yourself")
+    ap.add_argument("--po-db", help=f"smart PO database (default: {PO_DB_NAME} next to the script)")
+    bq = ap.add_mutually_exclusive_group()
+    bq.add_argument("--insert-beq", action="store_true",
+                    help=f"give every site with no beq the TOPAS GUI default, beq {BEQ_GUI}")
+    bq.add_argument("--smart-beq", action="store_true",
+                    help="give every site with no beq a value by element: H 2, O and similar "
+                         "non-metals 1, metals 0.5")
+    ap.add_argument("--no-comments", action="store_true",
+                    help="smart PO: ignore comments (phase names and cells only)")
 
     args = ap.parse_args()
 
@@ -969,12 +1568,30 @@ def main():
         sys.exit("Output would overwrite the input; choose a different -o path.")
 
     text, enc = read_text(src)
-    out, changed, skipped, warnings, notes = process(text)
+    pre_warn = []
+    db = None
+    if args.po_db and not args.smart_po:
+        sys.exit("--po-db only applies with --smart-po")
+    if args.no_comments and not args.smart_po:
+        sys.exit("--no-comments only applies with --smart-po")
+    process.use_comments = not args.no_comments
+    if args.smart_po:
+        db_path = Path(args.po_db) if args.po_db else Path(__file__).with_name(PO_DB_NAME)
+        if args.po_db and not db_path.is_file():
+            sys.exit(f"PO database not found: {db_path}")
+        db = load_po_db(db_path, pre_warn)
+        db_note = db_path.name if db_path.is_file() else "not found - built-in clay list only"
+    beq_mode = "smart" if args.smart_beq else "gui" if args.insert_beq else None
+    out, changed, skipped, warnings, notes, smart_report = process(text, db, beq_mode)
+    warnings[:0] = pre_warn
     with open(dst, "w", encoding=enc, newline="") as f:
         f.write(out)
 
-    print(f"add_topas_limits.py v{__version__}")
+    print(f"{Path(__file__).name} v{__version__}")
     print(f"Input : {src}\nOutput: {dst}")
+    print("Smart PO: off" if db is None else f"Smart PO database: {db_note}")
+    print({None: "Beq: off", "gui": f"Beq: missing beq set to {BEQ_GUI} (TOPAS GUI default)",
+           "smart": "Beq: missing beq set by element (H 2, O and similar 1, metals 0.5)"}[beq_mode])
 
     print(f"\nPhases and notes: {len(notes)}")
     for n in notes:
@@ -982,6 +1599,19 @@ def main():
     print(f"\nChanged: {len(changed)}")
     for ln, label, value, ins in changed:
         print(f"  line {ln:>5}  {label} {value}  + {ins}")
+    print(f"\nSmart PO added (fixed, not refined): {len(smart_report)}")
+    for ln, pname, hkl, reason in smart_report:
+        print(f"  line {ln:>5}  {pname}: PO {hkl}  ({reason})")
+    beq_report = getattr(process, "beq_report", [])
+    if beq_mode:
+        print(f"\nBeq inserted: {sum(r[2] for r in beq_report)} sites in {len(beq_report)} phases")
+        for ln, pname, n, detail in beq_report:
+            print(f"  line {ln:>5}  {pname}: {n} site(s) ({detail})")
+    no_po = getattr(process, "no_po", [])
+    if db is not None and no_po:
+        print(f"\nSmart PO not added - no common PO direction in the database: {len(no_po)}")
+        for ln, pname, nm in no_po:
+            print(f"  line {ln:>5}  {pname} ({nm if nm.startswith(chr(39)) else repr(nm)})")
     print(f"\nSkipped and symmetry checks: {len(skipped)}")
     for ln, why in skipped:
         print(f"  line {ln:>5}  {why}")

@@ -1,0 +1,116 @@
+phase,aliases,h,k,l,check,confidence,notes
+# CARBONATES,,,,,,,
+Calcite,Mg-calcite;Magnesian calcite,1,0,4,hex,,perfect rhombohedral cleavage {10-14} (hexagonal axes)
+Dolomite,Ankerite,1,0,4,hex,,rhombohedral cleavage (hexagonal axes)
+Magnesite,,1,0,4,hex,,rhombohedral cleavage (hexagonal axes)
+Siderite,,1,0,4,hex,,rhombohedral cleavage (hexagonal axes)
+Rhodochrosite,,1,0,4,hex,,rhombohedral cleavage (hexagonal axes)
+Smithsonite,,1,0,4,hex,,rhombohedral cleavage (hexagonal axes)
+Aragonite,,0,1,0,b_longest,check,distinct {010} cleavage; prismatic/acicular along c (Pmcn a 4.96 b 7.97 c 5.74) - use 0 0 1 if acicular
+Witherite,,0,1,0,b_longest,check,aragonite group; distinct {010} cleavage
+Cerussite,,1,1,0,b_longest,check,aragonite group; distinct {110} and {021} cleavage
+Strontianite,,1,1,0,b_longest,check,aragonite group; nearly perfect {110} cleavage
+Malachite,,2,0,1,c_shortest,check,perfect {201} cleavage; fibrous along c (P21/a c ~3.24) - settings vary
+Azurite,,0,1,1,c_longest,check,perfect {011} cleavage (P21/c a 5.01 b 5.85 c 10.35); settings vary
+# SULFATES,,,,,,,
+Gypsum,,0,1,0,b_longest,,perfect {010} cleavage
+Anhydrite,,0,1,0,c_shortest,check,perfect {010} and nearly perfect {100} (Amma: a ~ b ~ 7.0; c ~ 6.2) - confirm which in your setting
+Bassanite,Hemihydrate,0,1,0,b_shortest,check,needles; needle axis assumed to be the short pseudohexagonal axis (I2 b ~6.93)
+Barite,Baryte,0,0,1,b_shortest,,perfect {001} cleavage; tabular {001} (Pnma a 8.88 b 5.46 c 7.16)
+Celestine,Celestite,0,0,1,b_shortest,,barite group; perfect {001} cleavage (Pnma)
+Anglesite,,0,0,1,b_shortest,,barite group; {001} cleavage (Pnma)
+Jarosite,Natrojarosite,0,0,1,hex,,distinct {0001} cleavage; tabular
+Alunite,Natroalunite,0,0,1,hex,,distinct {0001} cleavage
+Ettringite,AFt;Thaumasite,0,0,1,c_longest,,needles along c; expect March-Dollase value > 1
+# CEMENT HYDRATES AND HYDROXIDES,,,,,,,
+Portlandite,Calcium hydroxide,0,0,1,c_longest,,perfect {0001} cleavage; hexagonal plates
+Brucite,Magnesium hydroxide,0,0,1,c_longest,,perfect {0001} cleavage; platy
+Hydrotalcite,,0,0,1,c_longest,,layered double hydroxide; platy
+Monosulfate,Monosulphate;Kuzelite;AFm;Monosulfoaluminate;Monosulphoaluminate,0,0,1,c_longest,,AFm layered; platy
+Hemicarbonate,Hemicarboaluminate,0,0,1,c_longest,,AFm layered; platy
+Monocarbonate,Monocarboaluminate,0,0,1,c_longest,,AFm layered; platy
+Stratlingite,Straetlingite;Strätlingite,0,0,1,c_longest,,AFm layered; platy
+Gibbsite,Bayerite,0,0,1,c_longest,,perfect {001} cleavage; tabular on {001}
+Boehmite,,0,1,0,b_longest,,very good {010} cleavage (Cmcm/Amam)
+Diaspore,,0,1,0,b_longest,,perfect {010} cleavage; platy on {010} (Pbnm)
+Goethite,,0,1,0,b_longest,,perfect {010} cleavage; acicular (Pbnm a 4.60 b 9.96 c 3.02)
+Lepidocrocite,,0,1,0,b_longest,,perfect {010} cleavage; platy (Cmcm b ~12.5)
+# OXIDES,,,,,,,
+Hematite,Haematite;Specularite,1,0,4,hex,check,from experience; morphology: tabular on {0001} -> (001) and rhombohedral parting {10-11} -> (012) in the structural cell
+Ilmenite,,0,0,1,hex,,no cleavage; tabular {0001} - only if platy
+Rutile,,1,1,0,c_shortest,,good {110} cleavage; prismatic along c
+Anatase,,0,0,1,c_longest,,perfect {001} cleavage
+Magnetite,Maghemite;Titanomagnetite,,,,,,no cleavage (octahedral parting) - not added
+Chromite,Spinel;Gahnite;Franklinite;Hercynite;Magnesioferrite;Jacobsite;Trevorite,,,,,,spinel group; no cleavage - not added
+Corundum,,,,,,,no cleavage - not added
+Cassiterite,,,,,,,imperfect cleavage - not added
+Periclase,,,,,,,cubic; minimal PO - not added
+Lime,Free lime,,,,,,cubic; minimal PO - not added
+Cuprite,,,,,,,no useful cleavage - not added
+# SULFIDES,,,,,,,
+Galena,,1,0,0,,,perfect cubic {001} cleavage
+Sphalerite,Zinc blende,1,1,0,,,perfect dodecahedral {011} cleavage
+Covellite,,0,0,1,c_longest,,perfect {0001} cleavage; platy
+Cinnabar,,1,0,0,hex,,perfect {10-10} prismatic cleavage
+Stibnite,,0,1,0,c_shortest,,perfect {010} cleavage; elongated along c (Pbnm a 11.23 b 11.31 c 3.84)
+Pyrite,,,,,,,no useful cleavage - not added
+Chalcopyrite,,,,,,,indistinct cleavage - not added
+Pyrrhotite,Troilite,,,,,,no cleavage ({0001} parting) - not added
+Pentlandite,,,,,,,octahedral parting only - not added
+Arsenopyrite,Marcasite,1,1,0,,check,distinct {110} cleavage; settings vary
+Bornite,Chalcocite;Digenite;Tetrahedrite;Tennantite,,,,,,no useful cleavage - not added
+# HALIDES AND PHOSPHATES,,,,,,,
+Halite,,1,0,0,,,perfect cubic {100} cleavage
+Sylvite,,1,0,0,,,perfect cubic {100} cleavage
+Fluorite,Fluorspar,1,1,1,,,perfect octahedral {111} cleavage
+Apatite,Fluorapatite;Hydroxylapatite;Hydroxyapatite;Chlorapatite,0,0,1,hex,,prismatic to acicular along c; poor {0001} cleavage - expect value > 1 if needles
+# SILICATES - LAYER (clays are in the built-in list),,,,,,,
+Muscovite,Sericite;Mica,0,0,1,sheet_ab,,mica; perfect {001} cleavage
+Paragonite,,0,0,1,sheet_ab,,mica; perfect {001} cleavage
+Biotite,Annite,0,0,1,sheet_ab,,mica; perfect {001} cleavage
+Phlogopite,,0,0,1,sheet_ab,,mica; perfect {001} cleavage
+Lepidolite,,0,0,1,sheet_ab,,mica; perfect {001} cleavage
+Margarite,,0,0,1,sheet_ab,,mica; perfect {001} cleavage
+Glauconite,Celadonite,0,0,1,sheet_ab,,mica; perfect {001} cleavage
+Lizardite,,0,0,1,c_longest,,serpentine; platy {001}
+Antigorite,,0,0,1,c_shortest,,serpentine; platy {001} (Pm a ~43.5 b ~9.25 c ~7.26)
+Chrysotile,,1,0,0,a_shortest,check,fibrous along a; settings vary
+Chloritoid,,0,0,1,c_longest,,perfect {001} cleavage; platy
+Graphite,,0,0,1,c_longest,,perfect basal cleavage; platy
+Molybdenite,,0,0,1,c_longest,,perfect basal cleavage; platy
+# SILICATES - FRAMEWORK,,,,,,,
+Orthoclase,Sanidine;Microcline;K-feldspar;Adularia,0,0,1,b_longest,check,perfect {001} and good {010} cleavage
+Albite,Plagioclase;Anorthite;Oligoclase;Andesine;Labradorite;Bytownite;Feldspar,0,0,1,b_longest,check,perfect {001} and good {010} cleavage
+Quartz,,,,,,,no PO in a well-ground sample - not added (PO only appears when under-ground)
+Cristobalite,Tridymite;Opal,,,,,,no useful cleavage - not added
+Clinoptilolite,Heulandite,0,1,0,c_shortest,check,zeolite; perfect {010} cleavage (C2/m a ~17.7 b ~17.9 c ~7.4)
+Analcime,,,,,,,cubic; no cleavage - not added
+Natrolite,Mesolite;Scolecite,0,0,1,c_shortest,check,fibrous/acicular along c (Fdd2 c ~6.6)
+Stilbite,Stellerite,0,1,0,,check,perfect {010} cleavage; settings vary
+Laumontite,,0,1,0,,check,perfect {010} and {110} cleavage
+Mordenite,,1,0,0,,check,perfect {100} cleavage; fibrous
+Chabazite,,1,0,1,hex,check,rhombohedral cleavage; hexagonal-axes index uncertain
+# SILICATES - CHAIN,,,,,,,
+Diopside,Augite;Hedenbergite;Clinopyroxene;Aegirine;Acmite;Jadeite;Omphacite;Spodumene;Pigeonite;Johannsenite;Kosmochlor;Esseneite;Clinoenstatite;Clinoferrosilite;Fassaite;Pyroxene,1,1,0,c_shortest,check,clinopyroxene; good {110} cleavage; prismatic along c (C2/c c ~5.25) - use 0 0 1 instead if needle-like
+Enstatite,Orthopyroxene;Hypersthene;Ferrosilite;Bronzite,2,1,0,c_shortest,check,orthopyroxene; good {210} cleavage; prismatic along c (Pbca c ~5.2)
+Hornblende,Amphibole;Tremolite;Actinolite;Tschermakite;Edenite;Pargasite;Hastingsite;Kaersutite;Sadanagaite;Cannilloite;Winchite;Barroisite;Katophorite;Taramite;Richterite;Glaucophane;Riebeckite;Crocidolite;Crossite;Arfvedsonite;Eckermannite;Leakeite;Nyboite;Cummingtonite;Grunerite;Clinoholmquistite;Clinoamphibole,1,1,0,c_shortest,check,amphibole; perfect {110} cleavage; prismatic to fibrous along c (C2/m c ~5.3) - use 0 0 1 instead if fibrous
+Anthophyllite,Gedrite;Holmquistite;Orthoamphibole,2,1,0,c_shortest,check,orthoamphibole; perfect {210} cleavage; prismatic along c
+Wollastonite,,1,0,0,,check,perfect {100}; fibrous along b; triclinic settings vary
+# SILICATES - ISOLATED AND OTHER,,,,,,,
+Forsterite,Olivine;Fayalite;Monticellite,0,1,0,b_longest,check,sources disagree: perfect/good {010} vs no distinct cleavage (Pbnm b ~10.2)
+Almandine,Garnet;Pyrope;Grossular;Andradite;Spessartine;Uvarovite,,,,,,garnet; no cleavage - not added
+Zircon,,,,,,,no useful cleavage - not added
+Titanite,Sphene,1,1,0,,check,distinct {110} cleavage; P21/a vs C2/c settings differ
+Epidote,Clinozoisite;Allanite,0,0,1,b_shortest,,perfect {001} cleavage; elongated along b (P21/m b ~5.6)
+Kyanite,,1,0,0,c_shortest,,perfect {100} cleavage; bladed
+Sillimanite,,0,1,0,c_shortest,,perfect {010} cleavage; prismatic/fibrous along c (Pbnm c ~5.77)
+Andalusite,,1,1,0,c_shortest,check,good {110} cleavage; prismatic along c
+Tourmaline,Schorl;Dravite;Elbaite,,,,,,no cleavage; prismatic along c - not added
+Topaz,,0,0,1,a_shortest,check,perfect {001} cleavage (Pbnm a 4.65 b 8.80 c 8.39); settings vary
+Prehnite,,0,0,1,c_longest,check,good {001} cleavage; settings vary
+# CLINKER AND SYNTHETIC PHASES,,,,,,,
+Alite,C3S;Hatrurite,,,,,,no PO by default
+Belite,C2S;Larnite,,,,,,no PO by default
+Tricalcium aluminate,C3A;Aluminate,,,,,,no PO by default
+Ferrite,C4AF;Brownmillerite,,,,,,no PO by default
+Mullite,,,,,,,no PO by default
