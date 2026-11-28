@@ -6,7 +6,7 @@ abstract: >-
   Python script that inserts missing min/max limits for unit cell,
   crystallite size and strain parameters in TOPAS .inp files, and checks
   that each phase's unit cell is refined and constrained as its space
-  group requires.
+  group requires. Sensible beq and PO starting values can also be inserted.
 authors:
   - family-names: Spratt
     given-names: Henry
